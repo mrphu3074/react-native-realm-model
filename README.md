@@ -15,7 +15,7 @@ const realm = new Realm({
       	type: 'string',
       	optional: true
       },
-      price: 'number'
+      price: 'int'
     }
   }]
 })
