@@ -1,6 +1,22 @@
 ## React native Realm Model
 RealmModel is a wrapper for realm.
 
+
+## CHANGELOG
+- 0.0.10
+    + Fixed some bugs
+    + Supported model events: beforeInsert, afterInsert, beforeUpdate, afterUpdate, beforeRemove, afterRemove
+    ```js
+    class Product extends RealmModel {
+        static realm = realm;
+
+        static beforeInsert(doc) {
+            doc.createdAt = doc.updatedAt = new Date();
+            return doc;
+        }
+    }
+    ```
+
 ## How it works
 
 ```js

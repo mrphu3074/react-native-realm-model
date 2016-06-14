@@ -6,16 +6,17 @@ const hasRealm = Symbol('hasRealm');
 const _ownKeys = Symbol('_ownKeys');
 const _getOwnPropertyDescriptors = Symbol('_getOwnPropertyDescriptors');
 const _buildFilter = Symbol('_buildFilter');
+const _raiseEvent = Symbol('_raiseEvent');
 
 class RealmModel {
-	static realm = null;
+  static realm = null;
 
-	/**
-	 * Check realm exists
-	 */
-	static [hasRealm]() {
-		if(!_.isObject(this.realm))
-			throw new Error(`${this.name} model need realm instance for interacting with your database.
+  /**
+   * Check realm exists
+   */
+  static [hasRealm]() {
+    if(!_.isObject(this.realm))
+      throw new Error(`${this.name} model need realm instance for interacting with your database.
 Ex: 
 
 let realm = new Realm(...);
@@ -26,7 +27,7 @@ class ${this.name} extends RealmModel {
 
     if(!this.realm.constructor || this.realm.constructor.name != 'Realm')
       throw new Error('realm must be instance of Realm');
-	}
+  }
 
   constructor(o = {}) {
     /**
@@ -72,8 +73,8 @@ class ${this.name} extends RealmModel {
     let criteria = [];
     const op = ['$or', '$and'];
     _.each(filter, (v, k) => {
-      if(_.contains(op, k)) {
-      	// not yet implement logical operator $or, $and
+      if(_.indexOf(op, k) >= 0) {
+        // not yet implement logical operator $or, $and
       } else {
         if(_.isString(v)) {
           criteria.push(`${k} = "${v}"`);
@@ -93,12 +94,35 @@ class ${this.name} extends RealmModel {
     return criteria.join(' AND ');
   }
 
+  static [_raiseEvent](className, event, params) {
+    if(event.startsWith('after')) {
+      setTimeout(() => {
+        className[event] && className[event](params);
+      }, 0);
+    } else {
+      className[event] && className[event](params);
+    }
+  }
+
+
+  /////////////////////////////////////
+  //          EVENTS    						//
+  ///////////////////////////////////
+  static beforeInsert(params) { return params; }
+  static beforeUpdate(params) { return params; }
+  static beforeRemove(params) { return params; }
+  static afterInsert(params) { return params; }
+  static afterUpdate(params) { return params; }
+  static afterRemove(params) { return params; }
+
+
+
   /////////////////////////////////////
   //          PUBLIC APIs						//
   ///////////////////////////////////
-	
-	static find(filter = {}, option = {}) {
-		this[hasRealm]();
+
+  static find(filter = {}, option = {}) {
+    this[hasRealm]();
     try {
       var className = this;
       let objects = className.realm.objects(this.name);
@@ -134,10 +158,10 @@ class ${this.name} extends RealmModel {
     } catch (e) {
       throw e;
     }
-	}
+  }
 
-	static findOne(filter = {}) {
-		this[hasRealm]();
+  static findOne(filter = {}) {
+    this[hasRealm]();
     try {
       var className = this;
       let objects = className.realm.objects(this.name);
@@ -155,25 +179,27 @@ class ${this.name} extends RealmModel {
     } catch (e) {
       throw e;
     }
-	}
+  }
 
-	static insert(params) {
-		this[hasRealm]();
+  static insert(params) {
+    this[hasRealm]();
     return new Promise((resolve, reject) => {
       try {
         var className = this;
         className.realm.write(() => {
+          params = this.beforeInsert(params);
           const o = className.realm.create(this.name, {
             ...params,
             id: uuid.v4()
           });
-          resolve(o);
+          this[_raiseEvent](className, 'afterInsert', o);
+          resolve(new className(o));
         });
       } catch (e) {
         reject(e);
       }
     });
-	}
+  }
 
   static update(filter = {}, modifier = {}) {
     try {
@@ -193,9 +219,11 @@ class ${this.name} extends RealmModel {
         className.realm.write(() => {
           _.each(objects, o => {
             if(_.isObject(o) && o.constructor.name == 'RealmObject') {
+              modifier = this.beforeUpdate(modifier);
               _.each(modifier, (v, k) => {
                 if(o[k]) o[k] = v;
               })
+              this[_raiseEvent](className, 'afterUpdate', o);
             }
           })
         })
@@ -206,11 +234,11 @@ class ${this.name} extends RealmModel {
     }
   }
 
-	static upsert() {
-		this[hasRealm]();
+  static upsert() {
+    this[hasRealm]();
 
 
-	}
+  }
 
   static remove(filter = {}) {
     try {
@@ -227,7 +255,11 @@ class ${this.name} extends RealmModel {
 
       if(objects.length) {
         className.realm.write(() => {
-          className.realm.delete(objects);
+          _.each(objects, o => {
+            this[_raiseEvent](className, 'beforeRemove', o);
+            className.realm.delete(o);
+            this[_raiseEvent](className, 'afterRemove');
+          });
         })
       }
       return null;
@@ -245,7 +277,9 @@ class ${this.name} extends RealmModel {
       try {
         const className = this.constructor;
         className.realm.write(() => {
+          className[_raiseEvent](className, 'beforeRemove');
           className.realm.delete(this);
+          className[_raiseEvent](className, 'afterRemove');
           resolve();
         });
       } catch (e) {
@@ -259,14 +293,17 @@ class ${this.name} extends RealmModel {
    * @param args
    * @return Promise
    */
-  update(args = {}) {
+  update(modifier = {}) {
     return new Promise((resolve, reject) => {
       try {
         const className = this.constructor;
         className.realm.write(() => {
-          _.each(args, (v, k) => {
-            if(this[k]) this[k] = v;
+          modifier = className.beforeUpdate(modifier);
+          _.each(modifier, (v, k) => {
+            if(this.hasOwnProperty(k))
+              this[k] = v;
           });
+          className[_raiseEvent](className, 'afterUpdate');
           resolve();
         });
         resolve();
